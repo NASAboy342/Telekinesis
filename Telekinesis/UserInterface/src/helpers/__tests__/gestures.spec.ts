@@ -389,6 +389,109 @@ describe('a fist only counts when the palm side faces the camera', () => {
   })
 })
 
+describe('fistBack: a fist with the back of the hand toward the camera (for avatar mode)', () => {
+  const back: HandOpts = { extended: FIST, tipZ: 0.05, mirrorX: true } // a left hand seen from the back
+  const palm: HandOpts = { extended: FIST, tipZ: -0.05 }
+  const feed = (tr: GestureTracker, o: HandOpts, frames: number, t0 = 0) => {
+    let out = tr.update([makeHand(o)], ['Left'], 1, t0 / 30)[0]!
+    for (let i = 1; i < frames; i++) out = tr.update([makeHand(o)], ['Left'], 1, (t0 + i) / 30)[0]!
+    return out
+  }
+
+  it('is set for a back-facing fist — which still reports pose "open", so the normal controls are unchanged', () => {
+    const h = feed(new GestureTracker(), back, 20)
+    expect(h.fistBack).toBe(true)
+    expect(h.pose).toBe('open')
+  })
+
+  it('is not set for a fist toward the camera, nor for an open hand (either side), a pinch or a point', () => {
+    expect(feed(new GestureTracker(), palm, 20).fistBack).toBe(false)
+    expect(
+      feed(new GestureTracker(), { extended: OPEN, mirrorX: true, tipZ: -0.05 }, 20).fistBack,
+    ).toBe(false)
+    expect(feed(new GestureTracker(), { extended: OPEN }, 20).fistBack).toBe(false)
+    expect(
+      feed(
+        new GestureTracker(),
+        { extended: [true, true, false, false, false], pinch: true, mirrorX: true, tipZ: 0.05 },
+        20,
+      ).fistBack,
+    ).toBe(false)
+    expect(feed(new GestureTracker(), { extended: POINT, mirrorX: true }, 20).fistBack).toBe(false)
+  })
+
+  it('works for the right hand and for a rotated hand too', () => {
+    const tr = new GestureTracker()
+    let h = tr.update([makeHand({ extended: FIST, tipZ: 0.05, rotate: 2 })], ['Right'], 1, 0)[0]!
+    for (let i = 1; i < 20; i++)
+      h = tr.update([makeHand({ extended: FIST, tipZ: 0.05, rotate: 2 })], ['Right'], 1, i / 30)[0]!
+    expect(h.fistBack).toBe(true)
+  })
+
+  it('is debounced: one glitchy frame does not set it, turning the fist over sets it within a few frames, turning it back clears it', () => {
+    const tr = new GestureTracker()
+    feed(tr, palm, 20)
+    expect(tr.update([makeHand(back)], ['Left'], 1, 20 / 30)[0]!.fistBack).toBe(false) // one frame is not enough
+    feed(tr, palm, 5, 21)
+    let frames = 0
+    let h = feed(tr, palm, 1, 30)
+    while (!h.fistBack && frames < 30) {
+      frames++
+      h = tr.update([makeHand(back)], ['Left'], 1, (31 + frames) / 30)[0]!
+    }
+    expect(h.fistBack).toBe(true)
+    expect(frames).toBeLessThanOrEqual(8)
+    expect(feed(tr, palm, 20, 80).fistBack).toBe(false)
+  })
+
+  it('a fist briefly seen edge-on does not make it flicker', () => {
+    const tr = new GestureTracker()
+    feed(tr, back, 20)
+    let flips = 0
+    let prev = true
+    for (let i = 0; i < 60; i++) {
+      const o: HandOpts = i % 2 ? { extended: FIST, flat: 0.02 } : back
+      const f = tr.update([makeHand(o)], ['Left'], 1, (20 + i) / 30)[0]!.fistBack
+      if (f !== prev) flips++
+      prev = f
+    }
+    expect(flips).toBe(0)
+  })
+})
+
+describe('HandSignals.index: where the hand sits in the landmark list', () => {
+  it('is the position in the list that was fed in', () => {
+    const tr = new GestureTracker()
+    const out = tr.update(
+      [
+        makeHand({ extended: OPEN }),
+        makeHand({ extended: FIST, tipZ: -0.05, at: { x: 0.2, y: 0.8 } }),
+      ],
+      ['Left', 'Right'],
+      1,
+      0,
+    )
+    expect(out.map((h) => [h.side, h.index])).toEqual([
+      ['left', 0],
+      ['right', 1],
+    ])
+  })
+
+  it('stays the index in the ORIGINAL list when a duplicate label is skipped', () => {
+    const tr = new GestureTracker()
+    const out = tr.update(
+      [makeHand({ extended: OPEN }), makeHand({ extended: OPEN }), makeHand({ extended: FIST })],
+      ['Right', 'Right', 'Left'],
+      1,
+      0,
+    )
+    expect(out.map((h) => [h.side, h.index])).toEqual([
+      ['right', 0],
+      ['left', 2],
+    ])
+  })
+})
+
 describe('OneEuro', () => {
   it('damps jitter around a still value', () => {
     const f = new OneEuro()

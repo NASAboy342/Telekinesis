@@ -19,6 +19,8 @@ export function useHandInput(source = 'input') {
   const error = ref('')
   const delegate = ref('')
   const fps = ref(0)
+  /** camera frame width / height (needed to undo the non-square normalized coordinates) */
+  const aspect = ref(4 / 3)
   const signals = shallowRef<HandSignals[]>([])
   /** Raw landmarks of the last detection (mirror x yourself when drawing). */
   const landmarks = shallowRef<NormalizedLandmark[][]>([])
@@ -92,9 +94,10 @@ export function useHandInput(source = 'input') {
     lastVideoTime = video.currentTime
     const result = tracker.landmarker.detectForVideo(video, performance.now())
     landmarks.value = result.landmarks
-    const aspect = video.videoWidth / Math.max(video.videoHeight, 1)
+    const frameAspect = video.videoWidth / Math.max(video.videoHeight, 1)
+    if (frameAspect !== aspect.value) aspect.value = frameAspect
     const labels = result.handedness.map((h) => h[0]?.categoryName ?? '')
-    signals.value = gestures.update(result.landmarks, labels, aspect, performance.now() / 1000)
+    signals.value = gestures.update(result.landmarks, labels, frameAspect, performance.now() / 1000)
     for (const h of signals.value) {
       if (lastPose.get(h.side) !== h.pose) {
         lastPose.set(h.side, h.pose)
@@ -118,5 +121,5 @@ export function useHandInput(source = 'input') {
 
   onBeforeUnmount(stop)
 
-  return { phase, error, delegate, fps, signals, landmarks, start, stop }
+  return { phase, error, delegate, fps, aspect, signals, landmarks, start, stop }
 }

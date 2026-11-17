@@ -23,6 +23,8 @@ export interface FacingInfo {
 }
 
 export interface HandSignals {
+  /** Index of this hand in the landmark list the tracker was fed (to find its raw landmarks again). */
+  index: number
   side: Side
   /** Debounced pose. */
   pose: Pose
@@ -39,6 +41,11 @@ export interface HandSignals {
   size: number
   /** Palm or back of the hand toward the camera (see `computeFacing`). */
   facing: FacingInfo
+  /**
+   * A fist with the BACK of the hand toward the camera (debounced like `pose`). `pose` reports it as 'open'
+   * (so the normal controls are unchanged); avatar mode uses this flag to give it a meaning of its own.
+   */
+  fistBack: boolean
   /** Unit vector the index finger points along, in mirrored screen space (x right, y down). Meaningful when `pose` is 'point'. */
   pointDir: { x: number; y: number }
   /** Smoothed palm velocity in frame-heights per second. */
@@ -98,6 +105,9 @@ interface HandState {
   facingScore: number
   facing: Facing
   facingInit: boolean
+  fistBack: boolean
+  fistBackCandidate: boolean
+  fistBackFrames: number
   pinching: boolean
   pose: Pose
   candidate: Pose
@@ -116,6 +126,9 @@ function newState(): HandState {
     facingScore: 0.5,
     facing: 'palm',
     facingInit: false,
+    fistBack: false,
+    fistBackCandidate: false,
+    fistBackFrames: 0,
     pinching: false,
     pose: 'none',
     candidate: 'none',
@@ -198,7 +211,7 @@ export class GestureTracker {
       seen.add(side)
       let s = this.states.get(side)
       if (!s) this.states.set(side, (s = newState()))
-      out.push(this.analyze(lm, side, labels[i] ?? '', s, dist, aspect, t))
+      out.push(this.analyze(lm, i, side, labels[i] ?? '', s, dist, aspect, t))
     })
     for (const side of this.states.keys()) if (!seen.has(side)) this.states.delete(side)
     return out
@@ -206,6 +219,7 @@ export class GestureTracker {
 
   private analyze(
     lm: Pt[],
+    index: number,
     side: Side,
     label: string,
     s: HandState,
@@ -247,6 +261,15 @@ export class GestureTracker {
     }
     if (s.candidateFrames >= THRESHOLDS.poseFrames) s.pose = s.candidate
 
+    // a fist seen from the back (reported as 'open' above): debounced the same way, for avatar mode
+    const rawFistBack = !s.pinching && openness === 0 && s.facing === 'back'
+    if (rawFistBack === s.fistBackCandidate) s.fistBackFrames++
+    else {
+      s.fistBackCandidate = rawFistBack
+      s.fistBackFrames = 1
+    }
+    if (s.fistBackFrames >= THRESHOLDS.poseFrames) s.fistBack = s.fistBackCandidate
+
     const cx = PALM_IDS.reduce((a, id) => a + lm[id]!.x, 0) / PALM_IDS.length
     const cy = PALM_IDS.reduce((a, id) => a + lm[id]!.y, 0) / PALM_IDS.length
     const x = s.fx.filter(1 - cx, t) // mirrored
@@ -273,7 +296,9 @@ export class GestureTracker {
     }
 
     return {
+      index,
       side,
+      fistBack: s.fistBack,
       facing: { state: s.facing, score: s.facingScore, winding: cues.winding, depth: cues.depth },
       pose: s.pose,
       pointDir: { x: s.dirX, y: s.dirY },

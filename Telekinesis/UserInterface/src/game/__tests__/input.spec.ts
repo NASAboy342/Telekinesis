@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyAvatar,
   handReach,
   handToSwarmInput,
   mouseToSwarmInput,
@@ -10,8 +11,11 @@ import {
   StopDetector,
 } from '../input'
 import type { HandSignals } from '@/helpers/gestures'
+import type { SwarmInput } from '../swarm'
 
 const hand = (over: Partial<HandSignals> = {}): HandSignals => ({
+  index: 0,
+  fistBack: false,
   side: 'right',
   pose: 'open',
   facing: { state: 'palm', score: 1, winding: 1, depth: 0 },
@@ -136,5 +140,43 @@ describe('mouse stop (Space)', () => {
     expect(handToSwarmInput(hand(), true).stop).toBe(true)
     expect(handToSwarmInput(hand()).stop).toBe(false)
     expect(handToSwarmInput(undefined).stop).toBe(false)
+  })
+})
+
+describe('applyAvatar: in avatar mode a back-facing fist circles the balls around the avatar', () => {
+  const avatarAt = { x: 1200, y: 800 }
+  const openInput = (over: Partial<SwarmInput> = {}): SwarmInput => ({
+    ...handToSwarmInput(hand({ pose: 'open', velocity: { x: 0.9, y: 0 } })),
+    ...over,
+  })
+
+  it('a back-facing fist becomes "two" (circle) around the avatar, with no drift and no direction', () => {
+    const i = applyAvatar(openInput(), true, avatarAt)
+    expect(i.pose).toBe('two')
+    expect(i.follow).toEqual(avatarAt)
+    expect(i.drift).toEqual({ x: 0, y: 0 })
+    expect(i.dir).toEqual({ x: 0, y: 0 })
+    expect(i.present).toBe(true)
+  })
+
+  it('without the back-fist the input is left exactly as it was (open palm still drifts, etc.)', () => {
+    const base = openInput()
+    expect(applyAvatar(base, false, avatarAt)).toBe(base)
+    expect(applyAvatar(base, false, avatarAt).drift).toEqual({ x: 0.9, y: 0 })
+  })
+
+  it('the stop gesture wins, a missing hand or avatar is ignored', () => {
+    const stopping = openInput({ stop: true })
+    expect(applyAvatar(stopping, true, avatarAt)).toBe(stopping)
+    const lost = handToSwarmInput(undefined)
+    expect(applyAvatar(lost, true, avatarAt)).toBe(lost)
+    const base = openInput()
+    expect(applyAvatar(base, true, null)).toBe(base)
+  })
+
+  it('keeps the other values (reach, pinch) so the rest of the controls behave as before', () => {
+    const i = applyAvatar(openInput({ reach: 0.9, pinch: 0.4 }), true, avatarAt)
+    expect(i.reach).toBe(0.9)
+    expect(i.pinch).toBe(0.4)
   })
 })

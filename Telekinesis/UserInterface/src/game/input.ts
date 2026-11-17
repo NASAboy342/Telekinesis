@@ -97,3 +97,17 @@ export function mouseToSwarmInput(
     return { present: true, pose: 'two', dir: NO_DIR, pinch, drift: NO_DIR, reach, stop: false }
   return { present: true, pose: 'open', dir: NO_DIR, pinch, drift, reach, stop: false }
 }
+
+/**
+ * Avatar mode: a fist with the BACK of the hand toward the camera (normally just an open palm) makes the balls
+ * circle, around the avatar hand — the centre follows it. Everything else is untouched. `avatarWorld` is the avatar's
+ * position in world units. The stop gesture (both hands open) always wins, and a lost hand stays lost.
+ */
+export function applyAvatar(
+  input: SwarmInput,
+  fistBack: boolean,
+  avatarWorld: { x: number; y: number } | null,
+): SwarmInput {
+  if (!fistBack || !avatarWorld || !input.present || input.stop) return input
+  return { ...input, pose: 'two', dir: NO_DIR, drift: NO_DIR, follow: avatarWorld }
+}

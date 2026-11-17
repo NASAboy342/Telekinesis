@@ -20,6 +20,11 @@ export interface SwarmInput {
   reach: number
   /** the stop gesture (both hands open): brake the swarm to a standstill, then it just keeps floating there */
   stop: boolean
+  /**
+   * Avatar mode only: world position of the avatar hand. While the swarm is circling (mode 'circle') it circles
+   * around THIS point, which follows the avatar, instead of around its own middle / front ball.
+   */
+  follow?: { x: number; y: number } | null
 }
 
 export type SwarmMode = 'rest' | 'levitate' | 'circle' | 'move'
@@ -38,6 +43,8 @@ export interface Ball {
   e: number
   /** seconds after the stream starts that it reaches this ball (set when pointing starts / turns sharply) */
   tau: number
+  /** this ball's own orbit-spring strength (a factor around 1), used when circling a followed point (see `followBindSpread`) */
+  bind: number
 }
 
 /**
@@ -102,7 +109,24 @@ export const TUNING = {
   pinchDamp: 6,
   /** circling: inward binding (1/s²) and sideways push (units/s²) around the centre */
   orbitBinding: 6,
+  /** …capped, so a ball thousands of units away isn't slingshotted through the centre (units/s²) */
+  orbitBindingMax: 5000,
   swirl: 330,
+  /**
+   * circling around a point that follows the avatar: the point's velocity is smoothed per frame (0..1), and the radial
+   * part of the balls' motion relative to it is damped (1/s) so they settle into a ring around the moving hand
+   * instead of oscillating through it
+   */
+  followVelSmooth: 0.25,
+  /** …and capped (units/s), so a followed point that jumps (a hand re-appearing elsewhere) can't kick the balls */
+  followVMax: 3000,
+  /**
+   * circling a followed point: each ball gets its own spring strength, `1 ± followBindSpread/2` times the orbit binding
+   * (from the ball's index, no randomness). A pure spring has the same orbit period at every radius, so a swarm that
+   * flies in as one clump would orbit as one clump for ever; different periods shear it into a ring around the hand.
+   */
+  followBindSpread: 1.5,
+  followDamp: 3.5,
   /** orbit spin ramps in/out (1/s) */
   spinRamp: 2.5,
   /** the swarm counts as "moving" (centre = front ball) above this speed (units/s) */
@@ -173,6 +197,11 @@ export class Swarm {
   }
   /** centre of the current pinch / circle (null when neither is happening) */
   anchor: Anchor | null = null
+  /** the followed (avatar) point last frame and its smoothed velocity, for the kinematic centre */
+  private followPrev: { x: number; y: number } | null = null
+  private followV = { x: 0, y: 0 }
+  /** true while the centre is the followed avatar point */
+  private following = false
   /** eased pinch strength 0..1 */
   private pinchE = 0
   /** eased orbit strength 0..1 */
@@ -207,6 +236,8 @@ export class Swarm {
         wander: 0.6 + this.rng() * 0.8,
         e: 0,
         tau: 0,
+        // golden-ratio sequence over the index: evenly spread values, no random numbers consumed
+        bind: 1 - TUNING.followBindSpread / 2 + TUNING.followBindSpread * ((i * 0.6180339887) % 1),
       })
     }
   }
@@ -309,13 +340,33 @@ export class Swarm {
     // --- pinch (eased) and the centre it / circling gather around
     const pinch = input.present ? Math.min(1, Math.max(0, input.pinch)) : 0
     this.pinchE += (pinch - this.pinchE) * Math.min(1, 8 * dt)
-    const needAnchor = this.mode === 'circle' || this.pinchE > 0.15
-    if (needAnchor && !this.anchor) this.anchor = this.makeAnchor(c)
-    else if (!needAnchor && this.pinchE < 0.05) this.anchor = null
+    const follow = input.present && this.mode === 'circle' ? (input.follow ?? null) : null
+    if (follow) {
+      // avatar mode: the centre IS the avatar (kinematic); its velocity comes from the avatar's own motion
+      if (this.followPrev) {
+        const k = T.followVelSmooth
+        this.followV.x += ((follow.x - this.followPrev.x) / Math.max(dt, 1e-3) - this.followV.x) * k
+        this.followV.y += ((follow.y - this.followPrev.y) / Math.max(dt, 1e-3) - this.followV.y) * k
+        const m = Math.hypot(this.followV.x, this.followV.y)
+        if (m > T.followVMax) {
+          this.followV.x *= T.followVMax / m
+          this.followV.y *= T.followVMax / m
+        }
+      } else this.followV = { x: 0, y: 0 }
+      this.followPrev = { x: follow.x, y: follow.y }
+      this.anchor = { x: follow.x, y: follow.y, vx: this.followV.x, vy: this.followV.y }
+      this.following = true
+    } else {
+      this.followPrev = null
+      this.following = false
+      const needAnchor = this.mode === 'circle' || this.pinchE > 0.15
+      if (needAnchor && !this.anchor) this.anchor = this.makeAnchor(c)
+      else if (!needAnchor && this.pinchE < 0.05) this.anchor = null
+    }
     this.brake +=
       ((input.present && input.stop ? 1 : 0) - this.brake) * Math.min(1, T.stopEase * dt)
     const a = this.anchor
-    if (a) {
+    if (a && !this.following) {
       // the centre coasts like a ball: it keeps its velocity and the air drag slows it
       const ad = T.airDrag + T.stopDrag * this.brake
       a.vx -= ad * a.vx * dt
@@ -442,8 +493,22 @@ export class Swarm {
           const ry = b.y - a.y
           if (this.spin > 0.001) {
             const d = Math.max(Math.hypot(rx, ry), 20)
-            ax += (-T.orbitBinding * rx - (ry / d) * T.swirl) * this.spin * lev
-            ay += (-T.orbitBinding * ry + (rx / d) * T.swirl) * this.spin * lev
+            const kBind = this.following ? T.orbitBinding * b.bind : T.orbitBinding
+            let bx = -kBind * rx
+            let by = -kBind * ry
+            const bm = Math.hypot(bx, by)
+            if (bm > T.orbitBindingMax) {
+              bx *= T.orbitBindingMax / bm
+              by *= T.orbitBindingMax / bm
+            }
+            ax += (bx - (ry / d) * T.swirl) * this.spin * lev
+            ay += (by + (rx / d) * T.swirl) * this.spin * lev
+            if (this.following) {
+              // settle into a ring around the moving centre: damp the radial motion relative to it
+              const vr = ((b.vx - a.vx) * rx + (b.vy - a.vy) * ry) / d
+              ax -= T.followDamp * vr * (rx / d) * this.spin * lev
+              ay -= T.followDamp * vr * (ry / d) * this.spin * lev
+            }
           }
           if (this.pinchE > 0.001) {
             ax += (T.pinchPull * -rx + T.pinchDamp * (a.vx - b.vx)) * this.pinchE * lev

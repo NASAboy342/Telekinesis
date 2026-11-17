@@ -14,7 +14,13 @@ Allow the camera when asked, press **Play → Use camera**, and hold a hand up (
 | **Pinch** (thumb + index) | Pulls the balls together; they stay clumped when you let go. |
 | **Both hands open** (hold ~0.3 s) | Stop: brakes to a standstill and keeps floating. |
 
-No camera? Click the **mouse** button in the top bar: hold the mouse button = open palm · move the mouse = wave · **Shift** = two fingers · **arrow keys / WASD** = point · **Alt** = pinch · **Space** = both hands open · **wheel** = hand distance · release = fist. The **Camera spike** page (Home) shows what the tracker sees, useful when a gesture is not recognised.
+### Avatar mode
+Your hand can show up on the stage as a tiny character. Switch it on (and off again) by performing the **gesture code** — hold each pose for about half a second, all four within a few seconds: **fist → point → two fingers → open palm** — or press the person button in the top bar. Then:
+- your hand is drawn as a small hand that **keeps the same size however close you hold it** and sits where your hand is on the screen (one hand at a time, smoothed so tracking jitter doesn't show);
+- a **fist with the back of the hand toward the camera** (normally just an open palm) makes the balls **circle around your avatar hand, and the circle follows it** as you move;
+- everything else works as in the table above.
+
+No camera? Click the **mouse** button in the top bar: hold the mouse button = open palm · move the mouse = wave · **Shift** = two fingers · **arrow keys / WASD** = point · **Alt** = pinch · **Space** = both hands open · **wheel** = hand distance · **B** = fist with the back toward the camera (avatar mode) · release = fist. The person button switches avatar mode, and then the pointer is the avatar. The **Camera spike** page (Home) shows what the tracker sees, useful when a gesture is not recognised.
 
 ## Repo layout
 ```
@@ -67,4 +73,5 @@ Single source of truth: `<Version>` in `Telekinesis/Telekinesis.csproj`.
 ## Known limitations
 - Verified on macOS (Photino / WKWebView, real webcam, GPU delegate). **Not yet verified:** Windows (WebView2), a packaged macOS `.app` (needs `NSCameraUsageDescription` in its `Info.plist`), and a Release build serving the `.wasm` / `.task` model files.
 - Balls are drawn very small (≈ 1.6 px radius, `VIEW_ZOOM` in `game/config.ts`); they look right on a 2× (retina) display and like dots on a 1× display.
+- Avatar mode has been tested with synthetic hands and the mouse, **not yet on a real hand**; its smoothing strength (`AVATAR` in `UserInterface/src/helpers/avatar.ts`) and size (`handPx`) are easy to tune.
 - Needs reasonable light; the tracker works best with the palm or fist clearly visible and the hand not edge-on.

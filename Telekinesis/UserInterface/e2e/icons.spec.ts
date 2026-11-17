@@ -63,3 +63,23 @@ test('form fields carry a leading icon', async ({ page }) => {
   // No form fields yet. When added: for (const id of [...]) expect parent to contain one svg[data-icon]
   expect(true).toBe(true)
 })
+
+test('/#/play in avatar mode with the mouse fallback: every clickable still has an icon', async ({
+  page,
+}) => {
+  await page.goto('/#/play')
+  await page.getByTestId('game-view').waitFor()
+  await page.getByTestId('game-mouse').click()
+  await page.getByTestId('game-avatar').click()
+  await expect(page.getByTestId('game-avatar-pill')).toBeVisible()
+  expect(await withoutIcon(page)).toEqual([])
+
+  // the avatar toggle in particular: an icon-only tool button, so it carries a title and an accessible name
+  const toggle = page.getByTestId('game-avatar')
+  await expect(toggle.locator('svg[data-icon]')).toHaveCount(1)
+  await expect(toggle).toHaveAttribute('title', /avatar/i)
+  await expect(toggle).toHaveAttribute('aria-label', 'Avatar mode')
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  // the pills are status pills: they carry an icon too
+  await expect(page.getByTestId('game-avatar-pill').locator('svg[data-icon]')).toHaveCount(1)
+})

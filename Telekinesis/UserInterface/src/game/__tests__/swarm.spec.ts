@@ -1032,6 +1032,146 @@ describe('circle', () => {
   })
 })
 
+describe('avatar mode: circling around a centre that follows the avatar hand', () => {
+  const circleAt = (x: number, y: number): SwarmInput => ({
+    present: true,
+    pose: 'two',
+    dir: NO,
+    pinch: 0,
+    drift: NO,
+    reach: 0.5,
+    stop: false,
+    follow: { x, y },
+  })
+  const dist = (b: Swarm['balls'][number], p: { x: number; y: number }) =>
+    Math.hypot(b.x - p.x, b.y - p.y)
+  const meanDist = (s: Swarm, p: { x: number; y: number }) => mean(s, (b) => dist(b, p))
+  const floating = () => {
+    const s = new Swarm(W, H)
+    run(s, 4, hand('open'))
+    return s
+  }
+
+  it('the balls gather and orbit the avatar point (not their own middle)', () => {
+    const s = floating()
+    const P = { x: 2400, y: 900 } // far from where the swarm floats
+    run(s, 7, circleAt(P.x, P.y))
+    expect(s.mode).toBe('circle')
+    expect(meanDist(s, P)).toBeLessThan(s.cloud * 1.6)
+    const c = s.centroid()
+    expect(Math.hypot(c.x - P.x, c.y - P.y)).toBeLessThan(s.cloud * 0.8)
+    // …and they really go round it
+    const omega = mean(s, (b) => {
+      const dx = b.x - P.x
+      const dy = b.y - P.y
+      return (dx * b.vy - dy * b.vx) / Math.max(dx * dx + dy * dy, 1)
+    })
+    expect(Math.abs(omega)).toBeGreaterThan(0.5)
+  })
+
+  it('they form a RING around the hand, not one clump orbiting it', () => {
+    const s = floating()
+    const P = { x: 2400, y: 900 }
+    run(s, 10, circleAt(P.x, P.y))
+    // how one-sided the balls are around the avatar: 1 = all on one side (a clump), 0 = evenly all the way round
+    const rx = mean(s, (b) => (b.x - P.x) / dist(b, P))
+    const ry = mean(s, (b) => (b.y - P.y) / dist(b, P))
+    expect(Math.hypot(rx, ry)).toBeLessThan(0.3)
+    const c = s.centroid()
+    expect(Math.hypot(c.x - P.x, c.y - P.y)).toBeLessThan(s.cloud * 0.6) // the swarm's middle is the avatar
+    const d = s.balls.map((b) => dist(b, P))
+    expect(Math.min(...d)).toBeGreaterThan(s.cloud * 0.5) // a ring around it, not piled on top of it
+    expect(Math.max(...d)).toBeLessThan(s.cloud * 4)
+  })
+
+  it('the centre follows the avatar when it moves and the ring keeps up', () => {
+    const s = floating()
+    let P = { x: 1000, y: 1000 }
+    run(s, 5, circleAt(P.x, P.y))
+    for (let i = 0; i < 60 * 4; i++) {
+      P = { x: P.x + 300 / 60, y: P.y + 100 / 60 } // 300 u/s right, 100 u/s down
+      s.step(1 / 60, circleAt(P.x, P.y))
+    }
+    expect(P.x).toBeGreaterThan(2100)
+    const c = s.centroid()
+    expect(Math.hypot(c.x - P.x, c.y - P.y)).toBeLessThan(s.cloud * 1.2) // it kept up
+    expect(meanDist(s, P)).toBeLessThan(s.cloud * 1.8)
+  })
+
+  it("the centre point gets the avatar's velocity (so the swirl damping stays sane)", () => {
+    const s = floating()
+    let P = { x: 1000, y: 1000 }
+    run(s, 2, circleAt(P.x, P.y))
+    for (let i = 0; i < 60 * 2; i++) {
+      P = { x: P.x + 400 / 60, y: P.y }
+      s.step(1 / 60, circleAt(P.x, P.y))
+    }
+    expect(s.anchor).not.toBeNull()
+    expect(s.anchor!.x).toBeCloseTo(P.x, 6) // kinematic: exactly the avatar
+    expect(s.anchor!.vx).toBeGreaterThan(300)
+    expect(s.anchor!.vx).toBeLessThan(500)
+  })
+
+  it('far-away balls are not slingshotted through the centre: capped pull + radial damping', () => {
+    const s = floating()
+    const P = { x: 3000, y: 500 }
+    const d0 = meanDist(s, P)
+    expect(d0).toBeGreaterThan(1500) // a long way off
+    let maxSpeed = 0
+    let worstLater = 0
+    for (let i = 0; i < 60 * 9; i++) {
+      s.step(1 / 60, circleAt(P.x, P.y))
+      for (const b of s.balls) maxSpeed = Math.max(maxSpeed, Math.hypot(b.vx, b.vy))
+      if (i > 60 * 3) worstLater = Math.max(worstLater, ...s.balls.map((b) => dist(b, P)))
+    }
+    expect(maxSpeed).toBeLessThan(5000)
+    expect(worstLater).toBeLessThan(d0 * 0.5) // they arrived and stayed around the centre (no overshoot flinging them out)
+    for (const b of s.balls) expect(Number.isFinite(b.x + b.y)).toBe(true)
+  })
+
+  it('a followed point that jumps does not kick the balls', () => {
+    const s = floating()
+    run(s, 6, circleAt(1500, 1000))
+    const before = Math.max(...s.balls.map((b) => Math.hypot(b.vx, b.vy)))
+    s.step(1 / 60, circleAt(1500 + 1500, 1000)) // teleports 1500 units in one frame
+    let peak = 0
+    for (let i = 0; i < 60; i++) {
+      s.step(1 / 60, circleAt(3000, 1000))
+      for (const b of s.balls) peak = Math.max(peak, Math.hypot(b.vx, b.vy))
+    }
+    expect(peak).toBeLessThan(Math.max(before, 600) + 4500)
+    expect(peak).toBeLessThan(6000)
+  })
+
+  it('follow does nothing unless the swarm is circling: open palm, pinch… ignore it', () => {
+    const s = floating()
+    const c0 = s.centroid()
+    for (let i = 0; i < 60 * 3; i++)
+      s.step(1 / 60, { ...hand('open'), follow: { x: 3000, y: 500 } })
+    const c1 = s.centroid()
+    expect(Math.hypot(c1.x - c0.x, c1.y - c0.y)).toBeLessThan(60)
+  })
+
+  it("without follow the circle is exactly the old one around the swarm's own centre", () => {
+    const a = floating()
+    const b = floating()
+    run(a, 4, hand('two'))
+    run(b, 4, { ...hand('two'), follow: null })
+    expect(b.centroid().x).toBeCloseTo(a.centroid().x, 6)
+    expect(b.centroid().y).toBeCloseTo(a.centroid().y, 6)
+  })
+
+  it('when circling stops the centre goes away and the balls just keep their velocity (open palm = drag only)', () => {
+    const s = floating()
+    run(s, 5, circleAt(2000, 1000))
+    run(s, 1, hand('open'))
+    expect(s.anchor).toBeNull()
+    expect(s.mode).toBe('levitate')
+    run(s, 8, hand('open'))
+    expect(speed(s)).toBeLessThan(60)
+  })
+})
+
 describe('robustness', () => {
   it('other poses (pinch / none) do not change the mode', () => {
     const s = new Swarm(W, H)

@@ -5,15 +5,38 @@ import AppIcon from '@/components/icons/AppIcon.vue'
 import { useHandInput } from '@/composables/useHandInput'
 import { Swarm, type SwarmInput, type SwarmMode } from '@/game/swarm'
 import { VIEW_ZOOM } from '@/game/config'
-import { handToSwarmInput, mouseToSwarmInput, primaryHand, StopDetector } from '@/game/input'
+import {
+  applyAvatar,
+  handToSwarmInput,
+  mouseToSwarmInput,
+  primaryHand,
+  StopDetector,
+} from '@/game/input'
+import { AVATAR, AvatarSmoother, type AvatarPose } from '@/helpers/avatar'
+import { GestureCode } from '@/helpers/gestureCode'
+import { HAND_CONNECTIONS } from '@/helpers/handTracker'
 import type { IconName } from '@/components/icons/icons'
-import type { Pose } from '@/helpers/gestures'
+import type { HandSignals, Pose } from '@/helpers/gestures'
 
 const canvas = ref<HTMLCanvasElement | null>(null)
 const input = useHandInput('game')
 const mouseMode = ref(false)
 const stopDetector = new StopDetector()
 const stopping = ref(false)
+// avatar mode: the hand is drawn as a small, steady character (see helpers/avatar.ts); the gesture code toggles it
+const avatarMode = ref(false)
+const codeProgress = ref(0)
+const gestureCode = new GestureCode()
+const avatarSmoother = new AvatarSmoother()
+interface PlacedAvatar {
+  pose: AvatarPose
+  /** canvas px */
+  px: number
+  py: number
+}
+let avatar: PlacedAvatar | null = null
+let avatarSide: string | null = null
+let avatarLostSince = -1
 const mode = ref<SwarmMode>('rest')
 const pose = ref<Pose>('none')
 
@@ -49,6 +72,7 @@ const mouse = {
   vy: 0,
   reach: 0.5,
   stop: false,
+  fistBack: false,
 }
 const KEY_DIR: Record<string, [number, number]> = {
   ArrowLeft: [-1, 0],
@@ -92,10 +116,9 @@ function resize() {
   else swarm.resize(worldW, worldH)
 }
 
-function currentInput(): SwarmInput {
+function currentInput(hand: HandSignals | undefined): SwarmInput {
   // the stop gesture (both hands open, held briefly) is evaluated every frame so its hold / release timers keep running
   const stop = stopDetector.update(input.signals.value, performance.now() / 1000)
-  const hand = primaryHand(input.signals.value)
   if (hand) return handToSwarmInput(hand, stop)
   if (mouseMode.value) {
     // the pointer's velocity stands in for the open hand's motion; it fades fast when the pointer stops
@@ -114,6 +137,60 @@ function currentInput(): SwarmInput {
   return handToSwarmInput(undefined)
 }
 
+/** wrist + the five fingertips: the only joints drawn as circles */
+const AVATAR_DOTS = [0, 4, 8, 12, 16, 20]
+
+function toggleAvatar() {
+  avatarMode.value = !avatarMode.value
+  gestureCode.reset()
+  codeProgress.value = 0
+  avatarSmoother.reset()
+  avatar = null
+  avatarSide = null
+  avatarLostSince = -1
+}
+
+/** Where the avatar is on the canvas (px), kept inside the canvas. */
+function placeAvatar(pose: AvatarPose, w: number, h: number): PlacedAvatar {
+  const m = AVATAR.handPx * 1.2
+  return {
+    pose,
+    px: Math.min(Math.max(pose.x * w, m), Math.max(m, w - m)),
+    py: Math.min(Math.max(pose.y * h, m), Math.max(m, h - m)),
+  }
+}
+
+/** One hand at a time: the primary hand (or the mouse pointer in the mouse fallback) drives the steady avatar. */
+function updateAvatar(hand: HandSignals | undefined, w: number, h: number, t: number) {
+  if (!avatarMode.value) {
+    avatar = null
+    return
+  }
+  if (hand) {
+    const lm = input.landmarks.value[hand.index]
+    if (lm) {
+      if (avatarSide !== hand.side) {
+        avatarSmoother.reset() // a different hand: don't smooth across the swap
+        avatarSide = hand.side
+      }
+      avatar = placeAvatar(avatarSmoother.update(lm, input.aspect.value, t), w, h)
+      avatarLostSince = -1
+      return
+    }
+  } else if (mouseMode.value && mouse.seen) {
+    avatar = placeAvatar(avatarSmoother.updateFromPoint(mouse.x / w, mouse.y / h, w / h, t), w, h)
+    avatarLostSince = -1
+    return
+  }
+  // hand lost: keep showing it for a moment so a one-frame dropout doesn't blink, then forget it
+  if (avatarLostSince < 0) avatarLostSince = t
+  if (t - avatarLostSince > AVATAR.lostAfter) {
+    avatar = null
+    avatarSide = null
+    avatarSmoother.reset()
+  }
+}
+
 function frame(now: number) {
   raf = requestAnimationFrame(frame)
   const c = canvas.value
@@ -122,7 +199,22 @@ function frame(now: number) {
   last = now
   const w = c.clientWidth
   const h = c.clientHeight
-  const inp = currentInput()
+  const t = now / 1000
+  const hand = primaryHand(input.signals.value)
+  // the gesture code (fist → point → two fingers → open palm) switches avatar mode on / off
+  if (gestureCode.update(hand?.pose ?? null, t)) toggleAvatar()
+  if (gestureCode.progress !== codeProgress.value) codeProgress.value = gestureCode.progress
+  updateAvatar(hand, w, h, t)
+  let inp = currentInput(hand)
+  if (avatarMode.value) {
+    // a fist with the back toward the camera now circles the balls around the avatar (the centre follows it)
+    const fistBack = hand ? hand.fistBack : mouseMode.value && mouse.down && mouse.fistBack
+    inp = applyAvatar(
+      inp,
+      fistBack,
+      avatar ? { x: avatar.px / VIEW_ZOOM, y: avatar.py / VIEW_ZOOM } : null,
+    )
+  }
   swarm.step(dt, inp)
   if (swarm.mode !== mode.value) mode.value = swarm.mode
   const braking = swarm.braking > 0.3
@@ -153,6 +245,34 @@ function draw(ctx: CanvasRenderingContext2D, w: number, h: number) {
     ctx.arc(b.x, b.y, s.radius - ctx.lineWidth / 2, 0, Math.PI * 2)
     ctx.stroke()
   }
+  if (avatar) drawAvatar(ctx, avatar)
+}
+
+/** The hand skeleton from the camera spike, very small and always the same size (AVATAR.handPx). Screen px. */
+function drawAvatar(ctx: CanvasRenderingContext2D, a: PlacedAvatar) {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  const k = AVATAR.handPx
+  const at = (i: number) => [a.px + a.pose.local[i]!.x * k, a.py + a.pose.local[i]!.y * k] as const
+  ctx.strokeStyle = '#000'
+  ctx.fillStyle = '#fff'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  for (const { start, end } of HAND_CONNECTIONS) {
+    const [x1, y1] = at(start)
+    const [x2, y2] = at(end)
+    ctx.moveTo(x1, y1)
+    ctx.lineTo(x2, y2)
+  }
+  ctx.stroke()
+  // At this size the fingers are only ~3 px apart, so a circle on every joint turns into a ladder: the bones are plain
+  // lines, and only the wrist and the five fingertips get a small outlined circle.
+  for (const i of AVATAR_DOTS) {
+    const [x, y] = at(i)
+    ctx.beginPath()
+    ctx.arc(x, y, 1.2, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
 }
 
 function syncModifiers(e: MouseEvent | KeyboardEvent) {
@@ -166,6 +286,7 @@ function onKeyDown(e: KeyboardEvent) {
     mouse.stop = true // Space stands in for "both hands open"
     e.preventDefault()
   }
+  if (e.key === 'b' || e.key === 'B') mouse.fistBack = true // a fist with the back to the camera (avatar mode)
   if (e.key in KEY_DIR) {
     heldKeys.add(e.key)
     if (e.key.startsWith('Arrow')) e.preventDefault()
@@ -175,6 +296,7 @@ function onKeyDown(e: KeyboardEvent) {
 function onKeyUp(e: KeyboardEvent) {
   syncModifiers(e)
   if (e.key === ' ') mouse.stop = false
+  if (e.key === 'b' || e.key === 'B') mouse.fistBack = false
   heldKeys.delete(e.key)
 }
 
@@ -273,12 +395,23 @@ onBeforeUnmount(() => {
       <button
         class="inline-flex size-9 items-center justify-center rounded-lg border border-border hover:bg-surface-hover"
         :class="mouseMode ? 'bg-surface-hover' : 'bg-surface-raised'"
-        title="Mouse fallback — hold: levitate (move the mouse = drift, wheel = hand distance, Space = stop) · Shift: circle · arrows/WASD: move · Alt: pinch (clump) · release: drop"
+        title="Mouse fallback — hold: levitate (move the mouse = drift, wheel = hand distance, Space = stop) · Shift: circle · arrows/WASD: move · Alt: pinch (clump) · B: fist with the back to the camera (avatar mode) · release: drop"
         aria-label="Mouse fallback"
         data-testid="game-mouse"
         @click="mouseMode = !mouseMode"
       >
         <AppIcon name="mouse-pointer" :size="16" />
+      </button>
+      <button
+        class="inline-flex size-9 items-center justify-center rounded-lg border border-border hover:bg-surface-hover"
+        :class="avatarMode ? 'bg-surface-hover' : 'bg-surface-raised'"
+        title="Avatar mode — your hand is shown as a small character; a fist with the back to the camera circles the balls around it. Switch it with this button or by performing the code: fist, point, two fingers, open palm"
+        aria-label="Avatar mode"
+        :aria-pressed="avatarMode"
+        data-testid="game-avatar"
+        @click="toggleAvatar"
+      >
+        <AppIcon name="user" :size="16" />
       </button>
     </div>
 
@@ -307,6 +440,22 @@ onBeforeUnmount(() => {
       >
         <AppIcon name="stop" :size="13" />
         stop
+      </span>
+      <span
+        v-if="avatarMode"
+        class="inline-flex items-center gap-1.5 rounded-md bg-surface-muted px-2 py-1"
+        data-testid="game-avatar-pill"
+      >
+        <AppIcon name="user" :size="13" />
+        avatar
+      </span>
+      <span
+        v-if="codeProgress > 0"
+        class="inline-flex items-center gap-1.5 rounded-md bg-surface-muted px-2 py-1"
+        data-testid="game-code"
+      >
+        <AppIcon name="key" :size="13" />
+        {{ codeProgress }}/{{ gestureCode.length }}
       </span>
       <span
         v-if="input.error.value"
