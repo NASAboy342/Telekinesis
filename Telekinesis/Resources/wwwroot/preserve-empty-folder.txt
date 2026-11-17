@@ -1,0 +1,1 @@
+Keeps Resources/wwwroot non-empty so the embedded file manifest is generated.

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Telekinesis.Test/Telekinesis.Test.csproj" />
+  <Project Path="Telekinesis/Telekinesis.csproj" />
+</Solution>
