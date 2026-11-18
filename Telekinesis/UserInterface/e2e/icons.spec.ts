@@ -26,7 +26,7 @@ export async function withoutIcon(page: Page): Promise<string[]> {
   }, CLICKABLE)
 }
 
-const ROUTES = ['/#/', '/#/spike', '/#/play']
+const ROUTES = ['/#/', '/#/spike', '/#/play', '/#/arena']
 
 for (const route of ROUTES) {
   test(`${route}: every clickable has an icon`, async ({ page }) => {
@@ -82,4 +82,27 @@ test('/#/play in avatar mode with the mouse fallback: every clickable still has 
   await expect(toggle).toHaveAttribute('aria-pressed', 'true')
   // the pills are status pills: they carry an icon too
   await expect(page.getByTestId('game-avatar-pill').locator('svg[data-icon]')).toHaveCount(1)
+})
+
+test('/#/arena: every clickable has an icon, and the new HUD buttons are proper icon-only tool buttons', async ({
+  page,
+}) => {
+  await page.goto('/#/arena')
+  await page.getByTestId('game-view').waitFor()
+  await page.getByTestId('game-mouse').click()
+  await page.getByTestId('game-avatar').click()
+  expect(await withoutIcon(page)).toEqual([])
+  for (const [id, label] of [
+    ['game-restart', 'Restart stage'],
+    ['game-next', 'Next stage'],
+    ['game-sound', 'Sound'],
+  ] as const) {
+    const b = page.getByTestId(id)
+    await expect(b.locator('svg[data-icon]')).toHaveCount(1)
+    await expect(b).toHaveAttribute('aria-label', label)
+    await expect(b).toHaveAttribute('title', /.+/)
+  }
+  // the HUD pills carry an icon too
+  for (const id of ['game-stage', 'game-goal', 'game-score', 'game-hint'])
+    await expect(page.getByTestId(id).locator('svg[data-icon]')).toHaveCount(1)
 })

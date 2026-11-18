@@ -247,6 +247,13 @@ export const ICONS = {
     path('M9 13a3 3 0 0 0-3 3v1a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4v-3a3 3 0 0 0-3-3h-2'),
   ],
   'mouse-pointer': [path('M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z')],
+  // sound (added with the Arena)
+  'volume-2': [
+    poly('11 5 6 9 2 9 2 15 6 15 11 19 11 5'),
+    path('M15.54 8.46a5 5 0 0 1 0 7.07'),
+    path('M19.07 4.93a10 10 0 0 1 0 14.14'),
+  ],
+  'volume-x': [poly('11 5 6 9 2 9 2 15 6 15 11 19 11 5'), line(22, 9, 16, 15), line(16, 9, 22, 15)],
   triangle: [path('M12 3 2 21h20z')],
   flag: [path('M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z'), line(4, 22, 4, 15)],
 } satisfies Record<string, IconShape[]>

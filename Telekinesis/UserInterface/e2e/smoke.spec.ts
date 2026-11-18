@@ -7,6 +7,8 @@ import { expect, test } from '@playwright/test'
 const ROUTES: { path: string; testid: string }[] = [
   { path: '/#/', testid: 'home-view' },
   { path: '/#/play', testid: 'game-view' },
+  { path: '/#/arena', testid: 'game-view' },
+  { path: '/#/arena?stage=5', testid: 'game-view' },
   { path: '/#/spike', testid: 'spike-view' },
 ]
 

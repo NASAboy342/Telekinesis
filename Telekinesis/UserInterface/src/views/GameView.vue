@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import { useHandInput } from '@/composables/useHandInput'
 import { Swarm, type SwarmInput, type SwarmMode } from '@/game/swarm'
 import { VIEW_ZOOM } from '@/game/config'
+import { Arena, type ArenaEvent } from '@/game/arena'
+import { drawArenaEffects, drawArenaWorld } from '@/game/arenaDraw'
+import { STAGES } from '@/game/stages'
+import { Sfx } from '@/helpers/audio'
 import {
   applyAvatar,
   handToSwarmInput,
@@ -18,6 +22,8 @@ import { HAND_CONNECTIONS } from '@/helpers/handTracker'
 import type { IconName } from '@/components/icons/icons'
 import type { HandSignals, Pose } from '@/helpers/gestures'
 
+const props = defineProps<{ arenaOn?: boolean; startStage?: number }>()
+const arenaMode = props.arenaOn === true
 const canvas = ref<HTMLCanvasElement | null>(null)
 const input = useHandInput('game')
 const mouseMode = ref(false)
@@ -37,6 +43,24 @@ interface PlacedAvatar {
 let avatar: PlacedAvatar | null = null
 let avatarSide: string | null = null
 let avatarLostSince = -1
+// Arena mode (route /arena): props, goals, score, combo and sound on top of the very same swarm and controls
+let arena: Arena | null = null
+const sfx = new Sfx()
+const soundOn = ref(true)
+const stageCount = STAGES.length
+const hud = reactive({
+  stage: 1,
+  name: '',
+  hint: '',
+  have: 0,
+  need: 1,
+  score: 0,
+  combo: 0,
+  multiplier: 1,
+  cleared: false,
+  hasNext: false,
+})
+let timers: number[] = []
 const mode = ref<SwarmMode>('rest')
 const pose = ref<Pose>('none')
 
@@ -114,7 +138,69 @@ function resize() {
   const worldH = h / VIEW_ZOOM
   if (!swarm) swarm = new Swarm(worldW, worldH)
   else swarm.resize(worldW, worldH)
+  if (arenaMode) {
+    const floor = swarm.floorY + swarm.radius
+    if (!arena) arena = new Arena(worldW, worldH, floor, props.startStage ?? 0)
+    else if (arena.width !== worldW || arena.height !== worldH)
+      arena.resizeTo(worldW, worldH, floor)
+  }
 }
+
+/** Arena sounds: the score events climb a pentatonic ladder with the combo, the rest have their own voice. */
+function playEvent(e: ArenaEvent) {
+  switch (e.type) {
+    case 'pop':
+      sfx.pop()
+      break
+    case 'score':
+      sfx.note(e.note ?? 0)
+      break
+    case 'ring':
+      sfx.gong(e.note ?? 0)
+      break
+    case 'thud':
+      sfx.thud(e.strength ?? 0.5)
+      break
+    case 'swallow':
+      sfx.thud(0.15)
+      break
+    case 'clear':
+      ;[5, 7, 9].forEach((n, i) => timers.push(window.setTimeout(() => sfx.note(n, 1.2), i * 140)))
+      break
+  }
+}
+
+function syncHud(a: Arena) {
+  hud.stage = a.stageIndex + 1
+  hud.name = a.stage.name
+  hud.hint = a.stage.hint
+  hud.have = a.goal.have
+  hud.need = a.goal.need
+  hud.score = a.score
+  hud.combo = a.combo
+  hud.multiplier = a.multiplier
+  hud.cleared = a.cleared
+  hud.hasNext = a.hasNext
+}
+
+/** Start the stage again, with the swarm back on the floor. */
+function restartStage() {
+  if (!arena) return
+  arena.restart()
+  swarm = new Swarm(arena.width, arena.height)
+}
+
+function nextStage() {
+  if (arena?.next()) swarm = new Swarm(arena.width, arena.height)
+}
+
+function toggleSound() {
+  soundOn.value = !soundOn.value
+  sfx.setMuted(!soundOn.value)
+}
+
+/** Browsers only allow audio after a user gesture. */
+const unlockAudio = () => sfx.unlock()
 
 function currentInput(hand: HandSignals | undefined): SwarmInput {
   // the stop gesture (both hands open, held briefly) is evaluated every frame so its hold / release timers keep running
@@ -216,6 +302,11 @@ function frame(now: number) {
     )
   }
   swarm.step(dt, inp)
+  if (arena) {
+    arena.update(dt, swarm)
+    for (const e of arena.drainEvents()) playEvent(e)
+    syncHud(arena)
+  }
   if (swarm.mode !== mode.value) mode.value = swarm.mode
   const braking = swarm.braking > 0.3
   if (braking !== stopping.value) stopping.value = braking
@@ -238,13 +329,17 @@ function draw(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.moveTo(0, fy)
   ctx.lineTo(w / z, fy)
   ctx.stroke()
+  if (arena) drawArenaWorld(ctx, arena, z) // the props and distractors, under the balls
   // balls: outline only, no fill (1.2 screen px outline)
   ctx.lineWidth = 1.2 / z
+  ctx.strokeStyle = '#000'
+  ctx.setLineDash([])
   for (const b of s.balls) {
     ctx.beginPath()
     ctx.arc(b.x, b.y, s.radius - ctx.lineWidth / 2, 0, Math.PI * 2)
     ctx.stroke()
   }
+  if (arena) drawArenaEffects(ctx, arena, z) // rings, bursts and score text, over everything
   if (avatar) drawAvatar(ctx, avatar)
 }
 
@@ -338,6 +433,8 @@ onMounted(() => {
   window.addEventListener('mouseup', () => (mouse.down = false))
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
+  window.addEventListener('pointerdown', unlockAudio)
+  window.addEventListener('keydown', unlockAudio)
   raf = requestAnimationFrame(frame)
 })
 onBeforeUnmount(() => {
@@ -345,6 +442,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', resize)
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('keyup', onKeyUp)
+  window.removeEventListener('pointerdown', unlockAudio)
+  window.removeEventListener('keydown', unlockAudio)
+  timers.forEach((t) => window.clearTimeout(t))
+  timers = []
+  arena?.destroy()
 })
 </script>
 
@@ -413,6 +515,83 @@ onBeforeUnmount(() => {
       >
         <AppIcon name="user" :size="16" />
       </button>
+    </div>
+
+    <!-- Arena: the stage, the goal, the score and the combo, the controls, and a one-line hint -->
+    <div
+      v-if="arenaMode"
+      class="pointer-events-none absolute left-4 top-16 flex max-w-[calc(100%-2rem)] flex-col gap-2 text-xs font-semibold text-text-secondary"
+      data-testid="arena-hud"
+    >
+      <div class="flex flex-wrap items-center gap-2">
+        <span
+          class="inline-flex items-center gap-1.5 rounded-md bg-surface-muted px-2 py-1"
+          data-testid="game-stage"
+        >
+          <AppIcon name="flag" :size="13" /> {{ hud.stage }}/{{ stageCount }} {{ hud.name }}
+        </span>
+        <span
+          class="inline-flex items-center gap-1.5 rounded-md bg-surface-muted px-2 py-1"
+          data-testid="game-goal"
+        >
+          <AppIcon name="target" :size="13" /> {{ hud.have }}/{{ hud.need }}
+        </span>
+        <span
+          class="inline-flex items-center gap-1.5 rounded-md bg-surface-muted px-2 py-1"
+          data-testid="game-score"
+        >
+          <AppIcon name="star" :size="13" /> {{ hud.score }}
+        </span>
+        <span
+          v-if="hud.combo >= 2"
+          class="inline-flex items-center gap-1.5 rounded-md bg-text px-2 py-1 text-bg"
+          data-testid="game-combo"
+        >
+          <AppIcon name="flame" :size="13" /> ×{{ hud.multiplier }}
+        </span>
+        <span
+          v-if="hud.cleared"
+          class="inline-flex items-center gap-1.5 rounded-md bg-text px-2 py-1 text-bg"
+          data-testid="game-cleared"
+        >
+          <AppIcon name="check-circle" :size="13" /> cleared
+        </span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button
+          class="pointer-events-auto inline-flex size-9 items-center justify-center rounded-lg border border-border bg-surface-raised text-text hover:bg-surface-hover"
+          title="Restart this stage"
+          aria-label="Restart stage"
+          data-testid="game-restart"
+          @click="restartStage"
+        >
+          <AppIcon name="refresh" :size="16" />
+        </button>
+        <button
+          class="pointer-events-auto inline-flex size-9 items-center justify-center rounded-lg border border-border bg-surface-raised text-text hover:bg-surface-hover disabled:opacity-35"
+          title="Next stage (clear this one first)"
+          aria-label="Next stage"
+          :disabled="!hud.cleared || !hud.hasNext"
+          data-testid="game-next"
+          @click="nextStage"
+        >
+          <AppIcon name="arrow-right" :size="16" />
+        </button>
+        <button
+          class="pointer-events-auto inline-flex size-9 items-center justify-center rounded-lg border border-border text-text hover:bg-surface-hover"
+          :class="soundOn ? 'bg-surface-raised' : 'bg-surface-hover'"
+          title="Sound on / off"
+          aria-label="Sound"
+          :aria-pressed="soundOn"
+          data-testid="game-sound"
+          @click="toggleSound"
+        >
+          <AppIcon :name="soundOn ? 'volume-2' : 'volume-x'" :size="16" />
+        </button>
+      </div>
+      <p class="flex items-center gap-1.5 font-medium text-muted" data-testid="game-hint">
+        <AppIcon name="info" :size="12" /> {{ hud.hint }}
+      </p>
     </div>
 
     <div

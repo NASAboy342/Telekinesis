@@ -20,7 +20,13 @@ Your hand can show up on the stage as a tiny character. Switch it on (and off ag
 - a **fist with the back of the hand toward the camera** (normally just an open palm) makes the balls **circle around your avatar hand, and the circle follows it** as you move;
 - everything else works as in the table above.
 
-No camera? Click the **mouse** button in the top bar: hold the mouse button = open palm · move the mouse = wave · **Shift** = two fingers · **arrow keys / WASD** = point · **Alt** = pinch · **Space** = both hands open · **wheel** = hand distance · **B** = fist with the back toward the camera (avatar mode) · release = fist. The person button switches avatar mode, and then the pointer is the avatar. The **Camera spike** page (Home) shows what the tracker sees, useful when a gesture is not recognised.
+### Arena
+**Home → Arena** is the same swarm and the same hands, now with things to hit. Five short stages, each with a goal at the top: **Pop Garden** (pop 8 balloons — a fast comet straight up pops several at once), **Pyramid & Gongs** (ring 3 gongs), **Domino Rally** (tip the first domino: topple 24 of 30), **Wrecking Ball** (swing the ball into a tower: knock 12 crates over) and **Moths & Whirlpool** (balloons and gongs, with lanterns that lure your balls, a fan that blows them about and a whirlpool that swallows them and spits them out at the start).
+
+Each gesture is a different tool: the **comet** batters and pops, a **pinch clump** is a battering ram, a gentle **wave** nudges a balloon without popping it, **stop** rescues a swarm that wandered off. Every hit that scores raises a **combo** (up to ×8 if you keep the chain going within 2.5 s) and plays the next note of a scale, so a chain reaction becomes a little tune — the speaker button mutes it. The buttons under the stage name restart the stage, go to the next one (once it's cleared) and toggle the sound. Open a stage directly with `#/arena?stage=3`. Nothing is saved between sessions yet.
+
+### No camera?
+Click the **mouse** button in the top bar: hold the mouse button = open palm · move the mouse = wave · **Shift** = two fingers · **arrow keys / WASD** = point · **Alt** = pinch · **Space** = both hands open · **wheel** = hand distance · **B** = fist with the back toward the camera (avatar mode) · release = fist. The person button switches avatar mode, and then the pointer is the avatar. The **Camera spike** page (Home) shows what the tracker sees, useful when a gesture is not recognised.
 
 ## Repo layout
 ```
@@ -74,4 +80,5 @@ Single source of truth: `<Version>` in `Telekinesis/Telekinesis.csproj`.
 - Verified on macOS (Photino / WKWebView, real webcam, GPU delegate). **Not yet verified:** Windows (WebView2), a packaged macOS `.app` (needs `NSCameraUsageDescription` in its `Info.plist`), and a Release build serving the `.wasm` / `.task` model files.
 - Balls are drawn very small (≈ 1.6 px radius, `VIEW_ZOOM` in `game/config.ts`); they look right on a 2× (retina) display and like dots on a 1× display.
 - Avatar mode has been tested with synthetic hands and the mouse, **not yet on a real hand**; its smoothing strength (`AVATAR` in `UserInterface/src/helpers/avatar.ts`) and size (`handPx`) are easy to tune.
+- The Arena has been tested with the mouse fallback and with synthetic hands (the sound can't be heard in the automated tests, only its calls are checked); it has **not yet been played with the camera**. The balls' hit strength and the whirlpool's pull were tuned with measurements, so they are easy to retune (`coupling.ts`, `distractors.ts`).
 - Needs reasonable light; the tracker works best with the palm or fist clearly visible and the hand not edge-on.
