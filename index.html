@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Telekinesis — control a swarm with your hands</title>
+    <meta
+      name="description"
+      content="A minimalist game: lift, steer and throw a swarm of balls with your bare hands, using only your webcam. Free download for macOS and Windows."
+    />
+    <meta property="og:title" content="Telekinesis" />
+    <meta property="og:description" content="Control a swarm with your hands. Free download for macOS and Windows." />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='1.5' y='1.5' width='61' height='61' rx='14' fill='%23fff' stroke='%23000' stroke-width='1.6'/%3E%3Cg fill='none' stroke='%23000' stroke-width='1.4'%3E%3Ccircle cx='16.5' cy='52' r='3'/%3E%3Ccircle cx='24' cy='52' r='3'/%3E%3Ccircle cx='32' cy='52' r='3'/%3E%3Ccircle cx='40' cy='52' r='3'/%3E%3Ccircle cx='47.5' cy='52' r='3'/%3E%3Ccircle cx='28' cy='45' r='3'/%3E%3Ccircle cx='36' cy='45' r='3'/%3E%3Ccircle cx='32' cy='25' r='3'/%3E%3Ccircle cx='25' cy='17.5' r='3'/%3E%3Ccircle cx='39' cy='17.5' r='3'/%3E%3Ccircle cx='32' cy='10.5' r='3'/%3E%3Cpath d='M10 56h44'/%3E%3C/g%3E%3C/svg%3E" />
+    <style>
+      :root {
+        --bg: #fff;
+        --text: #16181d;
+        --muted: #646b78;
+        --border: #d9dce2;
+        --soft: #f4f5f7;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      a { color: inherit; }
+      .wrap { max-width: 880px; margin: 0 auto; padding: 0 16px; }
+      svg.i { width: 1em; height: 1em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+      /* hero */
+      header { position: relative; text-align: center; padding: 72px 0 40px; overflow: hidden; }
+      #swarm { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+      .logo { width: 96px; height: 96px; }
+      h1 { margin: 12px 0 4px; font-size: clamp(2.2rem, 7vw, 3.4rem); letter-spacing: -0.03em; line-height: 1.1; }
+      .tag { margin: 0 auto; max-width: 34rem; color: var(--muted); font-size: 1.1rem; }
+
+      /* buttons */
+      .btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 28px 0 8px; }
+      .btn {
+        display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 20px;
+        border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text);
+        font-weight: 600; text-decoration: none; position: relative;
+      }
+      .btn:hover { background: var(--soft); }
+      .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+      .btn.primary:hover { background: #2b2f38; }
+      .btn small { display: block; font-weight: 500; font-size: 0.72rem; opacity: 0.7; line-height: 1.2; }
+      .btn svg.i { font-size: 1.25rem; }
+      .btn:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+      .meta { text-align: center; color: var(--muted); font-size: 0.85rem; }
+      .meta span { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px; }
+
+      /* sections */
+      section { padding: 40px 0; border-top: 1px solid var(--border); }
+      h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; font-size: 1.4rem; letter-spacing: -0.02em; }
+      .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+      .card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+      .card h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 1rem; }
+      .card p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+      ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 12px; }
+      ol.steps li { counter-increment: s; display: flex; gap: 12px; align-items: flex-start; }
+      ol.steps li::before {
+        content: counter(s); flex: none; width: 28px; height: 28px; border: 1px solid var(--text); border-radius: 50%;
+        display: grid; place-items: center; font-size: 0.8rem; font-weight: 700;
+      }
+      details { border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+      details + details { margin-top: 8px; }
+      summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+      details p { margin: 8px 0 0; color: var(--muted); font-size: 0.92rem; }
+      kbd { border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; padding: 0 6px; font: 0.85em ui-monospace, monospace; }
+      footer { border-top: 1px solid var(--border); padding: 24px 0 40px; color: var(--muted); font-size: 0.85rem; text-align: center; }
+      #status { min-height: 1.4em; }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+    </style>
+  </head>
+  <body>
+    <!--
+      Standalone landing page for manual hosting: no build step, no dependencies, not part of the game or its build.
+      Just upload this one file. The only thing to adjust is REPO below (the GitHub "owner/name" that holds the releases).
+    -->
+    <header>
+      <canvas id="swarm" aria-hidden="true"></canvas>
+      <div class="wrap" style="position: relative">
+        <svg class="logo" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" role="img" aria-label="Telekinesis logo">
+          <circle cx="16.5" cy="52" r="3" /><circle cx="24" cy="52" r="3" /><circle cx="32" cy="52" r="3" /><circle cx="40" cy="52" r="3" /><circle cx="47.5" cy="52" r="3" />
+          <circle cx="20.2" cy="45" r="3" /><circle cx="28" cy="45" r="3" /><circle cx="36" cy="45" r="3" /><circle cx="43.8" cy="45" r="3" />
+          <circle cx="24" cy="38" r="3" /><circle cx="32" cy="38" r="3" /><circle cx="40" cy="38" r="3" />
+          <circle cx="32" cy="25" r="3" /><circle cx="25" cy="17.5" r="3" /><circle cx="39" cy="17.5" r="3" /><circle cx="32" cy="10.5" r="3" />
+          <path d="M10 56h44" />
+        </svg>
+        <h1>Telekinesis</h1>
+        <p class="tag">Lift, steer and throw a swarm of balls with your bare hands. Just a webcam, no controller.</p>
+
+        <div class="btns" id="buttons">
+          <a class="btn primary" id="dl-mac" href="#" data-testid="download-mac">
+            <svg class="i" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14" /></svg>
+            <span>Download for macOS <small id="v-mac">Apple Silicon · .dmg</small></span>
+          </a>
+          <a class="btn primary" id="dl-win" href="#" data-testid="download-win">
+            <svg class="i" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14" /></svg>
+            <span>Download for Windows <small id="v-win">64-bit · installer</small></span>
+          </a>
+        </div>
+        <p class="meta">
+          <span><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg><b id="version">Free</b></span>
+          <span><svg class="i" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2" /><path d="m16 11 5-3v8l-5-3" /></svg>Needs a webcam</span>
+          <span><svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>Video never leaves your computer</span>
+        </p>
+        <p class="meta" id="status" role="status"></p>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section aria-labelledby="h-play">
+        <h2 id="h-play"><svg class="i" viewBox="0 0 24 24"><path d="M6 4v16l14-8z" /></svg>Your hands are the controller</h2>
+        <div class="grid">
+          <div class="card"><h3><svg class="i" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8l-1.5-1.5a2 2 0 0 0-3 2.5L7 21a6 6 0 0 0 5 2h2a6 6 0 0 0 6-6v-6a2 2 0 0 0-4 0" transform="translate(2 -1) scale(.9)" /></svg>Open palm</h3><p>The swarm floats. Wave your hand and random balls drift the way you move.</p></div>
+          <div class="card"><h3><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6" /></svg>Point</h3><p>Stream the swarm where your finger points, head first, like a comet.</p></div>
+          <div class="card"><h3><svg class="i" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3-6.2M20 4v5h-5" /></svg>Two fingers</h3><p>Make the swarm circle. A closed fist lets everything drop.</p></div>
+          <div class="card"><h3><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v4m0 12v4M2 12h4m12 0h4" /></svg>Pinch</h3><p>Pull the balls into a tight clump that hits much harder.</p></div>
+          <div class="card"><h3><svg class="i" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>Both hands open</h3><p>Stop: the swarm brakes to a standstill.</p></div>
+          <div class="card"><h3><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></svg>Arena</h3><p>Five stages with balloons, gongs, dominoes, a wrecking ball and distractions. Chain hits for a combo and play a little tune.</p></div>
+        </div>
+      </section>
+
+      <section aria-labelledby="h-start">
+        <h2 id="h-start"><svg class="i" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z" /></svg>Up and running in a minute</h2>
+        <ol class="steps">
+          <li><div><b>Download and install</b><br /><span style="color: var(--muted)">macOS: open the .dmg and drag Telekinesis to Applications. Windows: run the installer.</span></div></li>
+          <li><div><b>Open it and press Home → How to play</b><br /><span style="color: var(--muted)">A short guided lesson teaches each gesture by doing it.</span></div></li>
+          <li><div><b>Allow the camera and hold a hand up</b><br /><span style="color: var(--muted)">About an arm’s length from the screen, in good light. No camera? Use the mouse button in the top bar.</span></div></li>
+        </ol>
+      </section>
+
+      <section aria-labelledby="h-faq">
+        <h2 id="h-faq"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v5h1" /></svg>Good to know</h2>
+        <details>
+          <summary><svg class="i" viewBox="0 0 24 24"><path d="M12 3 3 7v6c0 5 4 8 9 9 5-1 9-4 9-9V7z" /></svg>macOS says “unidentified developer”</summary>
+          <p>The app is not signed with a paid Apple certificate yet. Right-click (or Ctrl-click) Telekinesis in Applications, choose <b>Open</b>, then <b>Open</b> again. You only need to do this once.</p>
+        </details>
+        <details>
+          <summary><svg class="i" viewBox="0 0 24 24"><path d="M12 3 3 7v6c0 5 4 8 9 9 5-1 9-4 9-9V7z" /></svg>Windows shows “protected your PC”</summary>
+          <p>SmartScreen warns about apps without a paid certificate. Click <b>More info</b>, then <b>Run anyway</b>.</p>
+        </details>
+        <details>
+          <summary><svg class="i" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2" /><path d="m16 11 5-3v8l-5-3" /></svg>Is my camera recorded?</summary>
+          <p>No. Hand tracking runs on your computer; the video is never saved or sent anywhere, and the game works offline.</p>
+        </details>
+        <details>
+          <summary><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg>What do I need?</summary>
+          <p>macOS 11 or newer on an Apple Silicon Mac, or 64-bit Windows 10/11 with Microsoft Edge WebView2 (preinstalled on current Windows), and a webcam. Intel Macs: see all downloads below.</p>
+        </details>
+        <details>
+          <summary><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>No camera? Play with the mouse</summary>
+          <p>Press the mouse button in the top bar. Hold the mouse button = open palm, arrow keys = point, <kbd>Shift</kbd> = two fingers, <kbd>Alt</kbd> = pinch, <kbd>Space</kbd> = both hands open.</p>
+        </details>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <a id="all" href="#" data-testid="all-downloads" style="display: inline-flex; align-items: center; gap: 6px">
+          <svg class="i" viewBox="0 0 24 24"><path d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6v6M20 4l-9 9" /></svg>All downloads and release notes
+        </a>
+        <p>Telekinesis · outlines only, no fills.</p>
+      </div>
+    </footer>
+
+    <script>
+      // The GitHub repository ("owner/name") whose Releases hold the installers. Change it here if the repo moves.
+      const REPO = 'NASAboy342/Telekinesis'
+      const RELEASES = `https://github.com/${REPO}/releases`
+
+      const mac = document.getElementById('dl-mac')
+      const win = document.getElementById('dl-win')
+      const status = document.getElementById('status')
+      document.getElementById('all').href = RELEASES
+      // until the latest release is known, the buttons lead to the releases page (also the fallback if GitHub is unreachable)
+      mac.href = win.href = `${RELEASES}/latest`
+
+      // highlight the download that matches this computer
+      const ua = navigator.userAgent
+      const isWin = /Windows/i.test(ua)
+      const isMac = /Macintosh|Mac OS X/i.test(ua)
+      const first = isWin ? win : mac
+      if (isWin || isMac) {
+        document.getElementById('buttons').prepend(first)
+        ;(isWin ? mac : win).classList.remove('primary')
+      } else {
+        status.textContent = 'Telekinesis runs on macOS and Windows computers.'
+      }
+
+      const mb = (n) => `${Math.round(n / 1048576)} MB`
+      fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((rel) => {
+          const find = (re) => rel.assets.find((a) => re.test(a.name))
+          const m = find(/\.dmg$/i)
+          const w = find(/setup\.exe$/i)
+          if (m) { mac.href = m.browser_download_url; document.getElementById('v-mac').textContent = `Apple Silicon · .dmg · ${mb(m.size)}` }
+          if (w) { win.href = w.browser_download_url; document.getElementById('v-win').textContent = `64-bit · installer · ${mb(w.size)}` }
+          document.getElementById('version').textContent = `Version ${String(rel.tag_name).replace(/^v/, '')} · free`
+        })
+        .catch(() => {
+          // offline or rate-limited: the buttons still work, they open the releases page
+        })
+
+      // a little swarm that floats behind the title (outline only, like the game)
+      const cv = document.getElementById('swarm')
+      const ctx = cv.getContext('2d')
+      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+      let W = 0, H = 0, balls = []
+      function size() {
+        const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1
+        W = r.width; H = r.height
+        cv.width = W * d; cv.height = H * d
+        ctx.setTransform(d, 0, 0, d, 0, 0)
+        balls = Array.from({ length: Math.round(W / 14) }, (_, i) => ({
+          x: Math.random() * W, y: Math.random() * H, r: 2.5 + Math.random() * 2, v: 6 + Math.random() * 14, p: Math.random() * 6.28, k: 0.3 + Math.random() * 0.6,
+        }))
+      }
+      function draw(t) {
+        ctx.clearRect(0, 0, W, H)
+        ctx.strokeStyle = 'rgba(22,24,29,.22)'
+        ctx.lineWidth = 1
+        for (const b of balls) {
+          if (!reduce) { b.y -= b.v / 60; b.x += Math.sin(t / 1500 * b.k + b.p) * 0.25 }
+          if (b.y < -10) { b.y = H + 10; b.x = Math.random() * W }
+          ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.283); ctx.stroke()
+        }
+        if (!reduce) requestAnimationFrame(draw)
+      }
+      size(); draw(0)
+      addEventListener('resize', () => { size(); if (reduce) draw(0) })
+    </script>
+  </body>
+</html>
