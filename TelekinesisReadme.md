@@ -37,6 +37,7 @@ Telekinesis.slnx
 Telekinesis/                 the desktop host (.NET 8 + Photino) — Telekinesis/PROJECT_README.md
   UserInterface/             the game (Vue 3 + TypeScript + Tailwind) — UserInterface/PROJECT_README.md
 Telekinesis.Test/            NUnit tests for the host
+landing/index.html           standalone download page for manual hosting (one file, no build; not used by the app or CI)
 TelekinesisReadme.md         this file
 ```
 
@@ -99,7 +100,7 @@ Known limits: unsigned builds show the macOS "unidentified developer" warning (r
 Single source of truth: `<Version>` in `Telekinesis/Telekinesis.csproj`.
 
 ## Known limitations
-- Verified on macOS (Photino / WKWebView, real webcam, GPU delegate). The packaged macOS `.app` was built and started (it serves the page, the `.wasm` and the `.task` model, and its `Info.plist` has `NSCameraUsageDescription`), but the camera prompt inside the packaged app and the whole **Windows** build (WebView2, Inno Setup, the CI workflow) are **not yet verified**.
+- Verified on macOS (Photino / WKWebView, real webcam, GPU delegate). The packaged macOS `.app` was built and started (it serves the page, the `.wasm` and the `.task` model, and its `Info.plist` has `NSCameraUsageDescription`), but the camera prompt inside the packaged app and the **Windows** app itself (WebView2 camera, installer on a real PC) are **not yet verified**. The release workflow has run once end to end (v1.0.0: both installers built and published).
 - Balls are drawn very small (≈ 1.6 px radius, `VIEW_ZOOM` in `game/config.ts`); they look right on a 2× (retina) display and like dots on a 1× display.
 - Avatar mode has been tested with synthetic hands and the mouse, **not yet on a real hand**; its smoothing strength (`AVATAR` in `UserInterface/src/helpers/avatar.ts`) and size (`handPx`) are easy to tune.
 - The Arena has been tested with the mouse fallback and with synthetic hands (the sound can't be heard in the automated tests, only its calls are checked); it has **not yet been played with the camera**. The balls' hit strength and the whirlpool's pull were tuned with measurements, so they are easy to retune (`coupling.ts`, `distractors.ts`).
