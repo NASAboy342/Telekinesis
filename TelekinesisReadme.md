@@ -37,6 +37,7 @@ Telekinesis.slnx
 Telekinesis/                 the desktop host (.NET 8 + Photino) — Telekinesis/PROJECT_README.md
   UserInterface/             the game (Vue 3 + TypeScript + Tailwind) — UserInterface/PROJECT_README.md
 Telekinesis.Test/            NUnit tests for the host
+landing/index.html           standalone download page for manual hosting (one file, no build; not used by the app or CI)
 TelekinesisReadme.md         this file
 ```
 
