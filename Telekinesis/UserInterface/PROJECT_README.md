@@ -11,6 +11,7 @@ src/
   main.ts  App.vue
   router/index.ts          / (home) · /play (the free swarm) · /arena (the game with props, goals, score and sound; `?stage=N` opens stage N) · /spike (hand-tracking debug page)
   views/
+    TutorialView.vue       /tutorial: GameView with the guide card (tutorialOn)
     HomeView.vue           logo, title, backend version pill, links to Play / Arena / Camera spike
     ArenaView.vue          the game view with the Arena switched on (`arenaOn`, `startStage` from `?stage=N`)
     GameView.vue           canvas + rAF loop + HUD (mode / pose / stop / avatar / code-progress pills) + mouse fallback + avatar mode; with `arenaOn`: the Arena HUD (stage / goal / score / combo, restart / next / sound), sounds, drawing
@@ -112,7 +113,8 @@ Score and combo: pop 100 · first gong ring 250 (later 25) · domino 20 · hard 
 
 ## Feature log
 Current state of each feature (not a history — update the bullet when a feature changes).
-- **Home** (`/`): logo (`AppLogo.vue`, outline-only, also `public/favicon.svg` as the tab icon and the desktop icons in `../AppIcon/`: one drawing in all places),  title, backend version pill (`GET /api/app/version`), links to Play, Arena and Camera spike. *Fully wired.*
+- **Home** (`/`): logo (`AppLogo.vue`, outline-only, also `public/favicon.svg` as the tab icon and the desktop icons in `../AppIcon/`: one drawing in all places),  title, backend version pill (`GET /api/app/version`), links to How to play, Play, Arena and Camera spike. *Fully wired.*
+- **Tutorial** (`/tutorial`): `game/tutorial.ts` (pure: 8 steps, each done by holding its gesture; progress drains when let go; a short settle between steps; skip / restart) fed every frame by `GameView` (`tutorialOn`) with pose, drift, pinch and stop; a guide card (`data-testid` `tutorial-*`) shows the step, camera + mouse instructions, progress bar, then links to the Arena. Nothing saved (it is always available from Home). *Fully wired.*
 - **Camera spike** (`/spike`): webcam → hand skeleton + per-hand readout; the debugging tool for tracking and gestures. Logs pose / facing changes to the host console. *Fully wired.*
 - **Hand tracking & gestures** (`helpers/`, `composables/`): bundled offline model (GPU, CPU fallback); smoothed signals; poses `open / fist / point / two / pinch`; **facing** (palm vs back of the hand from the knuckle winding + fingertip depth — a back-facing fist = open, flagged separately as `fistBack`); pointing direction; hand speed (drift) and size (distance). Verified on a real webcam in the macOS window.
 - **Swarm physics** (`game/swarm.ts`): 60 balls, gravity, drag, bouncing walls / floor, a position correction only against interpenetration; start as a heap in the middle of the floor. All unit-tested.

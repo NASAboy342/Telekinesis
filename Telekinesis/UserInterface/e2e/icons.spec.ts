@@ -26,7 +26,7 @@ export async function withoutIcon(page: Page): Promise<string[]> {
   }, CLICKABLE)
 }
 
-const ROUTES = ['/#/', '/#/spike', '/#/play', '/#/arena']
+const ROUTES = ['/#/', '/#/spike', '/#/play', '/#/arena', '/#/tutorial']
 
 for (const route of ROUTES) {
   test(`${route}: every clickable has an icon`, async ({ page }) => {

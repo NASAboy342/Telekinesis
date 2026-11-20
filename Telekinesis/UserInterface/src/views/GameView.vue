@@ -8,6 +8,7 @@ import { VIEW_ZOOM } from '@/game/config'
 import { Arena, type ArenaEvent } from '@/game/arena'
 import { drawArenaEffects, drawArenaWorld } from '@/game/arenaDraw'
 import { STAGES } from '@/game/stages'
+import { STEPS, Tutorial } from '@/game/tutorial'
 import { Sfx } from '@/helpers/audio'
 import {
   applyAvatar,
@@ -22,8 +23,9 @@ import { HAND_CONNECTIONS } from '@/helpers/handTracker'
 import type { IconName } from '@/components/icons/icons'
 import type { HandSignals, Pose } from '@/helpers/gestures'
 
-const props = defineProps<{ arenaOn?: boolean; startStage?: number }>()
+const props = defineProps<{ arenaOn?: boolean; startStage?: number; tutorialOn?: boolean }>()
 const arenaMode = props.arenaOn === true
+const tutorialMode = props.tutorialOn === true
 const canvas = ref<HTMLCanvasElement | null>(null)
 const input = useHandInput('game')
 const mouseMode = ref(false)
@@ -61,6 +63,23 @@ const hud = reactive({
   hasNext: false,
 })
 let timers: number[] = []
+// Tutorial mode (route /tutorial): the free swarm plus a guide card that walks through the gestures
+const tutorial = new Tutorial()
+const tut = reactive({ index: 0, progress: 0, done: false, praise: '' })
+function syncTutorial() {
+  tut.index = tutorial.index
+  tut.progress = Math.round(tutorial.progress * 100)
+  tut.done = tutorial.done
+  tut.praise = tutorial.last?.result ?? ''
+}
+function restartTutorial() {
+  tutorial.restart()
+  syncTutorial()
+}
+function skipTutorialStep() {
+  tutorial.skip()
+  syncTutorial()
+}
 const mode = ref<SwarmMode>('rest')
 const pose = ref<Pose>('none')
 
@@ -302,6 +321,17 @@ function frame(now: number) {
     )
   }
   swarm.step(dt, inp)
+  if (tutorialMode) {
+    const drift = inp.pose === 'open' ? Math.hypot(inp.drift.x, inp.drift.y) : 0
+    tutorial.update(dt, {
+      present: inp.present,
+      pose: inp.pose,
+      drift,
+      pinch: inp.pinch,
+      stopping: swarm.braking > 0.3,
+    })
+    syncTutorial()
+  }
   if (arena) {
     arena.update(dt, swarm)
     for (const e of arena.drainEvents()) playEvent(e)
@@ -515,6 +545,91 @@ onBeforeUnmount(() => {
       >
         <AppIcon name="user" :size="16" />
       </button>
+    </div>
+
+    <!-- Tutorial: one gesture at a time, done by doing it -->
+    <div
+      v-if="tutorialMode"
+      class="absolute left-4 top-16 flex w-[min(24rem,calc(100%-2rem))] flex-col gap-3 rounded-xl border border-border bg-surface-raised p-4 text-sm shadow-sm"
+      data-testid="tutorial-card"
+    >
+      <template v-if="!tut.done">
+        <div
+          class="flex items-center justify-between gap-2 text-xs font-semibold text-text-secondary"
+        >
+          <span
+            class="inline-flex items-center gap-1.5 rounded-md bg-surface-muted px-2 py-1"
+            data-testid="tutorial-step"
+          >
+            <AppIcon name="flag" :size="13" /> {{ tut.index + 1 }}/{{ STEPS.length }}
+          </span>
+          <button
+            class="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 hover:bg-surface-hover"
+            title="Skip this step"
+            aria-label="Skip this step"
+            data-testid="tutorial-skip"
+            @click="skipTutorialStep"
+          >
+            <AppIcon name="arrow-right" :size="13" /> Skip
+          </button>
+        </div>
+        <p
+          v-if="tut.praise && tut.index > 0"
+          class="flex items-center gap-1.5 text-xs font-medium text-muted"
+          data-testid="tutorial-praise"
+        >
+          <AppIcon name="check-circle" :size="13" /> {{ tut.praise }}
+        </p>
+        <h2 class="flex items-center gap-2 text-base font-bold" data-testid="tutorial-title">
+          <AppIcon :name="STEPS[tut.index]!.icon" :size="18" /> {{ STEPS[tut.index]!.title }}
+        </h2>
+        <p data-testid="tutorial-hint">{{ STEPS[tut.index]!.hint }}</p>
+        <p
+          v-if="mouseMode || input.phase.value !== 'running'"
+          class="flex items-start gap-1.5 text-xs font-medium text-muted"
+          data-testid="tutorial-mouse"
+        >
+          <AppIcon name="mouse-pointer" :size="13" class="mt-0.5 shrink-0" />
+          {{ STEPS[tut.index]!.mouse }}
+        </p>
+        <div
+          class="h-1.5 w-full overflow-hidden rounded-full border border-border"
+          role="progressbar"
+          aria-label="Step progress"
+          :aria-valuenow="tut.progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          data-testid="tutorial-progress"
+        >
+          <div class="h-full bg-text" :style="{ width: tut.progress + '%' }" />
+        </div>
+      </template>
+      <template v-else>
+        <h2 class="flex items-center gap-2 text-base font-bold" data-testid="tutorial-done">
+          <AppIcon name="check-circle" :size="18" /> You know every move
+        </h2>
+        <p class="text-text-secondary">
+          Next: the Arena gives you balloons to pop, gongs to ring and dominoes to topple. Chain
+          hits within 2.5 seconds for a combo. Tip:
+          <b>fist → point → two fingers → open palm</b> turns your hand into a small avatar.
+        </p>
+        <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
+          <RouterLink
+            to="/arena"
+            class="inline-flex h-9 items-center gap-2 rounded-lg border border-text bg-text px-3 text-bg"
+            data-testid="tutorial-arena"
+          >
+            <AppIcon name="target" :size="15" /> Arena
+          </RouterLink>
+          <button
+            class="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface-raised px-3 hover:bg-surface-hover"
+            data-testid="tutorial-restart"
+            @click="restartTutorial"
+          >
+            <AppIcon name="refresh" :size="15" /> Again
+          </button>
+        </div>
+      </template>
     </div>
 
     <!-- Arena: the stage, the goal, the score and the combo, the controls, and a one-line hint -->

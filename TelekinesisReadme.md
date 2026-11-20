@@ -14,6 +14,9 @@ Allow the camera when asked, press **Play → Use camera**, and hold a hand up (
 | **Pinch** (thumb + index) | Pulls the balls together; they stay clumped when you let go. |
 | **Both hands open** (hold ~0.3 s) | Stop: brakes to a standstill and keeps floating. |
 
+### Tutorial
+**Home → How to play** teaches the moves on the real stage, one at a time, by doing them: show your hand, open palm (float), wave (drift), point (comet), two fingers (circle), pinch (clump), fist (drop), both hands open (stop). A card at the top says what to do (and the mouse way, if the camera is off); a bar fills while you hold the gesture and the card moves on by itself. **Skip** jumps over a gesture the camera does not pick up. At the end it points to the Arena and the avatar code; **Again** starts over. Open it directly with `#/tutorial`.
+
 ### Avatar mode
 Your hand can show up on the stage as a tiny character. Switch it on (and off again) by performing the **gesture code** — hold each pose for about half a second, all four within a few seconds: **fist → point → two fingers → open palm** — or press the person button in the top bar. Then:
 - your hand is drawn as a small hand that **keeps the same size however close you hold it** and sits where your hand is on the screen (one hand at a time, smoothed so tracking jitter doesn't show);

@@ -38,6 +38,14 @@ onMounted(() => app.load())
       <AppIcon name="refresh" :size="16" />
     </button>
     <RouterLink
+      to="/tutorial"
+      class="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface-raised px-3 text-xs font-semibold hover:bg-surface-hover"
+      data-testid="open-tutorial"
+    >
+      <AppIcon name="bulb" :size="15" />
+      How to play
+    </RouterLink>
+    <RouterLink
       to="/play"
       class="inline-flex h-9 items-center gap-2 rounded-lg border border-text bg-text px-3 text-xs font-semibold text-bg"
       data-testid="open-play"
