@@ -1,0 +1,108 @@
+name: Release
+
+# Pushing a vX.Y.Z tag builds both platforms and publishes a GitHub Release.
+# workflow_dispatch lets the build jobs be tested on demand without cutting a
+# real release (the release job only runs for an actual tag push - see its
+# `if:` below).
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install frontend dependencies
+        working-directory: Telekinesis/UserInterface
+        # --legacy-peer-deps: the committed package-lock.json has a pre-existing peer-dependency
+        # conflict (vite 8.x vs @vitejs/plugin-vue's ^5/^6 peer range) that only a strict `npm ci`
+        # surfaces - unrelated to this workflow, not something to fix here by changing versions.
+        run: npm ci --legacy-peer-deps
+
+      - name: Type-check and unit tests
+        working-directory: Telekinesis/UserInterface
+        run: |
+          npx vue-tsc --build
+          npx vitest run
+
+      - name: Build macOS package
+        run: scripts/package-macos.sh osx-arm64
+
+      - name: Rename dmg to a versioned filename
+        run: |
+          VERSION=$(dotnet msbuild Telekinesis/Telekinesis.csproj -getProperty:Version -nologo)
+          cp Deployed/MacOs/Telekinesis.dmg "Deployed/MacOs/Telekinesis-$VERSION-osx-arm64.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: Deployed/MacOs/Telekinesis-*-osx-arm64.dmg
+          if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install frontend dependencies
+        working-directory: Telekinesis/UserInterface
+        # See the same step in build-macos for why --legacy-peer-deps is needed here.
+        run: npm ci --legacy-peer-deps
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: ./scripts/package-windows.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: Deployed/Windows/Telekinesis-*-win-x64-setup.exe
+          if-no-files-found: error
+
+  release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: artifacts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: artifacts
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" artifacts/* \
+            --title "Telekinesis ${{ github.ref_name }}" \
+            --generate-notes

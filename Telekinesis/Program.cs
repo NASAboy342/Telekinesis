@@ -1,8 +1,11 @@
 using System.Drawing;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
 using Photino.NET;
 using Photino.NET.Server;
 using Telekinesis.Api;
+using Telekinesis.Helper;
 using Telekinesis.Services;
 
 namespace Telekinesis;
@@ -22,6 +25,15 @@ class Program
         services.AddSingleton<IAppService, AppService>();
         services.AddSingleton<IDiagnosticsService, DiagnosticsService>();
         using var serviceProvider = services.BuildServiceProvider();
+
+        // Second static-file pass for what the first one answers 404 to (the .task hand model): see StaticFileHelpers.
+        app.UseStaticFiles(
+            new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(Path.Combine(AppContext.BaseDirectory, "wwwroot")),
+                ContentTypeProvider = StaticFileHelpers.ContentTypes(),
+            }
+        );
 
         app.MapAppEndpoints(serviceProvider.GetRequiredService<IAppService>());
         app.MapDiagnosticsEndpoints(serviceProvider.GetRequiredService<IDiagnosticsService>());

@@ -74,13 +74,32 @@ cd .. && dotnet build -c Release
 
 ## Deploy
 <!-- deploy reads this section. Filled in by setup-deploy. -->
-TBD — run `setup-deploy`.
+Desktop app, packaged as a macOS `.dmg` (Apple Silicon, `osx-arm64`) and a Windows installer (`win-x64`). Everything is **unsigned**.
+
+| File | Role |
+|---|---|
+| `scripts/package-macos.sh [osx-arm64\|osx-x64]` | frontend build → self-contained single-file publish → `Telekinesis.app` (Info.plist with the camera usage text, ad-hoc signed) → `Deployed/MacOs/Telekinesis.dmg` |
+| `scripts/package-windows.ps1` | the same on Windows, then Inno Setup → `Deployed/Windows/Telekinesis-<version>-win-x64-setup.exe` (needs Inno Setup 6) |
+| `scripts/windows-installer.iss` | installer definition (stable `AppId` GUID: never change it) |
+| `.github/workflows/release.yml` | tag `vX.Y.Z` → macOS + Windows builds in parallel → GitHub Release with both files; `workflow_dispatch` builds without releasing |
+
+Bundle id: `net.ppiinn.telekinesis`. The version comes only from `<Version>` in `Telekinesis/Telekinesis.csproj`.
+
+Steps (what the `deploy` skill runs):
+1. **Preflight**: clean `git status`; `dotnet test Telekinesis.slnx`; in `Telekinesis/UserInterface`: `npx vue-tsc --build`, `npx vitest run`, `npm run lint`; for the full e2e run start the stack (`run-test`) and `npx playwright test`.
+2. **Version**: propose the next `X.Y.Z` (semver) and **confirm with the user**; edit `<Version>` in the csproj; commit `Release vX.Y.Z` (the user commits).
+3. **Local check (macOS)**: `scripts/package-macos.sh osx-arm64`; open `Deployed/MacOs/Telekinesis.app` and check the camera prompt appears and hands are tracked. (`Deployed/` is git-ignored; the build also rewrites the git-ignored `Telekinesis/wwwroot/`.)
+4. **Tag and push (the user does this)**: `git tag vX.Y.Z && git push origin main vX.Y.Z`. Never push for the user unless they say so in that message.
+5. **Watch CI**: `gh run watch`; a failed run leaves no release: fix, then delete and re-push the tag or push a new patch tag.
+6. **Verify**: `gh release view vX.Y.Z` lists `Telekinesis-X.Y.Z-osx-arm64.dmg` and `Telekinesis-X.Y.Z-win-x64-setup.exe`; download one and install it.
+
+Known limits: unsigned builds show the macOS "unidentified developer" warning (right-click → Open) and Windows SmartScreen. Only Apple Silicon is built in CI; Intel Macs: run the script with `osx-x64` on a Mac.
 
 ## Versioning
 Single source of truth: `<Version>` in `Telekinesis/Telekinesis.csproj`.
 
 ## Known limitations
-- Verified on macOS (Photino / WKWebView, real webcam, GPU delegate). **Not yet verified:** Windows (WebView2), a packaged macOS `.app` (needs `NSCameraUsageDescription` in its `Info.plist`), and a Release build serving the `.wasm` / `.task` model files.
+- Verified on macOS (Photino / WKWebView, real webcam, GPU delegate). The packaged macOS `.app` was built and started (it serves the page, the `.wasm` and the `.task` model, and its `Info.plist` has `NSCameraUsageDescription`), but the camera prompt inside the packaged app and the whole **Windows** build (WebView2, Inno Setup, the CI workflow) are **not yet verified**.
 - Balls are drawn very small (≈ 1.6 px radius, `VIEW_ZOOM` in `game/config.ts`); they look right on a 2× (retina) display and like dots on a 1× display.
 - Avatar mode has been tested with synthetic hands and the mouse, **not yet on a real hand**; its smoothing strength (`AVATAR` in `UserInterface/src/helpers/avatar.ts`) and size (`handPx`) are easy to tune.
 - The Arena has been tested with the mouse fallback and with synthetic hands (the sound can't be heard in the automated tests, only its calls are checked); it has **not yet been played with the camera**. The balls' hit strength and the whirlpool's pull were tuned with measurements, so they are easy to retune (`coupling.ts`, `distractors.ts`).

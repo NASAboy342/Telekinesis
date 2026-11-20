@@ -15,7 +15,7 @@ Services/                  IAppService / AppService · IDiagnosticsService / Dia
 Models/                    AppVersionInfo · DiagnosticReport
 Repositories/              (empty — no storage chosen yet)
 Enum/                      (empty; namespace would be Telekinesis.Enums)
-Helper/                    JsonHelper (Newtonsoft, camelCase) · EndpointHelpers.Try (error mapping)
+Helper/                    JsonHelper (Newtonsoft, camelCase) · EndpointHelpers.Try (error mapping) · StaticFileHelpers (MIME for `.task`)
 AppIcon/                   app.ico / app.icns / icon-512.png (the game logo: ball heap, four lifted)
 Resources/wwwroot/         one placeholder file so the embedded manifest is generated
 wwwroot/                   the built UI (written by `npm run build` in UserInterface/, gitignored)
@@ -42,7 +42,8 @@ UserInterface/             the Vue frontend (own PROJECT_README.md)
 `dotnet test` (from the repo root) — `Telekinesis.Test/Services/AppServiceTests.cs`.
 
 ## Feature log
-- **Host + window** (`Program.cs`): Photino window (1100 × 760), Vite in Debug / embedded static files in Release. *Fully wired.*
+- **Host + window** (`Program.cs`): Photino window (1100 × 760), Vite in Debug / static files from `wwwroot` in Release (a second `UseStaticFiles` pass adds the `.task` MIME type, without it the packaged app answers 404 for the hand model). *Fully wired.*
+- **Packaging** (`../scripts`, `../.github/workflows/release.yml`): macOS `.dmg` and Windows installer; see Deploy in `TelekinesisReadme.md`. *macOS built and started locally; Windows and CI not yet run.*
 - **App info**: `GET /api/health`, `GET /api/app/version`. *Fully wired, tested (version).*
 - **Diagnostics**: `POST /api/diagnostics` — UI status lines (camera, model, pose / facing changes) printed to the host console. *Fully wired, no automated test yet.*
 - Nothing stubbed. Not yet verified: running on Windows (WebView2) and a packaged macOS `.app` (camera access needs `NSCameraUsageDescription` in its `Info.plist`).
