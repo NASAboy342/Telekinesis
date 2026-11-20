@@ -16,7 +16,7 @@ Models/                    AppVersionInfo · DiagnosticReport
 Repositories/              (empty — no storage chosen yet)
 Enum/                      (empty; namespace would be Telekinesis.Enums)
 Helper/                    JsonHelper (Newtonsoft, camelCase) · EndpointHelpers.Try (error mapping)
-AppIcon/                   app.ico / app.icns / icon-512.png (placeholder)
+AppIcon/                   app.ico / app.icns / icon-512.png (the game logo: ball heap, four lifted)
 Resources/wwwroot/         one placeholder file so the embedded manifest is generated
 wwwroot/                   the built UI (written by `npm run build` in UserInterface/, gitignored)
 UserInterface/             the Vue frontend (own PROJECT_README.md)
